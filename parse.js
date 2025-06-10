@@ -1,17 +1,20 @@
 // parseCards.js
-// Puppeteer script to extract data from card-1.html ... card-93.html, using the actual card name from the page title
+// Extracts data and downloads card image for card-1.html to card-93.html
 
 const fs = require('fs-extra');
 const path = require('path');
 const puppeteer = require('puppeteer');
+const axios = require('axios');
 
 (async () => {
-  const inputDir  = path.resolve(__dirname, 'card-htmls');
-  const outputTxt = path.resolve(__dirname, 'output.txt');
+  const inputDir   = path.resolve(__dirname, 'card-htmls');
+  const outputTxt  = path.resolve(__dirname, 'output.txt');
+  const imageDir   = path.resolve(__dirname, 'card-images');
 
-  // prepare fresh output
+  // Prepare fresh output file and image directory
   await fs.remove(outputTxt);
   await fs.ensureFile(outputTxt);
+  await fs.ensureDir(imageDir);
 
   const browser = await puppeteer.launch();
   const page    = await browser.newPage();
@@ -26,14 +29,33 @@ const puppeteer = require('puppeteer');
 
     await page.goto(`file://${filepath}`, { waitUntil: 'domcontentloaded' });
 
-    // Extract the card name from the <title> tag or og:title meta
+    // 1. Extract Card Name
     let cardName = await page.title().catch(() => 'N/A');
-    // fallback to meta property og:title if title() is generic
     if (!cardName || /Select|Credit Card/i.test(cardName)) {
       cardName = await page.$eval('meta[property="og:title"]', el => el.content.trim()).catch(() => cardName);
     }
 
-    // 1. Overview rows
+    // 2. Extract Card Image URL
+    const imageUrl = await page.$eval('meta[property="og:image"]', el => el.content.trim()).catch(() => null);
+    let imageFilename = 'N/A';
+    if (imageUrl) {
+      imageFilename = `${cardName.replace(/[^\w\s]/gi, '').replace(/\s+/g, '_')}.png`;
+      const imagePath = path.join(imageDir, imageFilename);
+      try {
+        const response = await axios.get(imageUrl, { responseType: 'stream' });
+        await new Promise((resolve, reject) => {
+          const writer = fs.createWriteStream(imagePath);
+          response.data.pipe(writer);
+          writer.on('finish', resolve);
+          writer.on('error', reject);
+        });
+      } catch (err) {
+        console.warn(`Failed to download image for card-${i}: ${err.message}`);
+        imageFilename = 'Download Failed';
+      }
+    }
+
+    // 3. Overview rows
     const overviewRows = await page.$$eval('h3', headers => {
       const hdr = headers.find(h => h.textContent.trim() === 'Overview');
       if (!hdr) return [];
@@ -46,7 +68,7 @@ const puppeteer = require('puppeteer');
       });
     });
 
-    // 2. Fee and Charges
+    // 4. Fee and Charges
     const baseCharges = await page.$$eval('.charges .col-12.col-md-3', els =>
       els.map(el => {
         const k = el.querySelector('p')?.textContent.trim();
@@ -55,7 +77,7 @@ const puppeteer = require('puppeteer');
       }).filter(Boolean)
     );
 
-    // 3. Late Payment Charges
+    // 5. Late Payment Charges
     const lateTiers = await page.$$eval('h6', headers => {
       const hdr = headers.find(h => h.textContent.trim().includes('Late Payment'));
       if (!hdr) return [];
@@ -69,7 +91,7 @@ const puppeteer = require('puppeteer');
       }).filter(Boolean);
     });
 
-    // 4. Maximum Cashback
+    // 6. Maximum Cashback
     const maxRows = await page.$$eval('h3', headers => {
       const hdr = headers.find(h => h.textContent.trim().includes('Maximum Cashback'));
       if (!hdr) return [];
@@ -82,9 +104,10 @@ const puppeteer = require('puppeteer');
       });
     });
 
-    // Build and append block
+    // 7. Combine everything
     const block = [
       `Card Name: ${cardName}`,
+      `Image File: ${imageFilename}`,
       '',
       'Overview:',
       ...overviewRows.map(l => `  - ${l}`),
@@ -106,5 +129,5 @@ const puppeteer = require('puppeteer');
   }
 
   await browser.close();
-  console.log('Done: Parsed cards into output.txt');
+  console.log('Done: Parsed cards and downloaded images.');
 })();

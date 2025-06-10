@@ -1,12 +1,12 @@
 const fs = require('fs');
 const { MongoClient } = require('mongodb');
 
-//  MongoDB Atlas connection string you provided
-const uri = 'mongodb+srv://reddytwitterkedharnathy:IXjUuP0ani5ggmyw@cluster0.wnbikuj.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
-const dbName = 'credit_cards_db';
+// MongoDB Atlas connection string
+const uri = 'mongodb+srv://kedharnathreddy:kedharnath@cluster0data.pw8tgeu.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0data';
+const dbName = 'credit_cards'; // <-- Replace with your actual DB name
 
 async function run() {
-  const client = new MongoClient(uri, { useNewUrlParser: true, useUnifiedTopology: true });
+  const client = new MongoClient(uri); // Deprecated options removed
 
   try {
     await client.connect();
@@ -47,7 +47,7 @@ async function run() {
   }
 }
 
-//  Extract section data as key-value pairs
+// Extract section data as key-value pairs
 function extractSection(text, sectionTitle) {
   const regex = new RegExp(`${sectionTitle}\\s*([\\s\\S]*?)(?=\\n[A-Z][a-z]+|\\n[A-Z]+|$)`, 'i');
   const match = text.match(regex);
